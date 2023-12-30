@@ -2,8 +2,9 @@
 <button id="btn-extract">Extract</button>
 <br>
 <canvas id="canvas"></canvas>
+<img id="img_e">
 <style>
-    #canvas{
+    #canvas,#img_e{
         max-width: 90vw;
         max-height: 90vh;
     }
@@ -13,6 +14,7 @@ window.onload = () => {
     canvas = document.getElementById("canvas")
     ctx = canvas.getContext("2d")
     be = document.getElementById("btn-extract")
+    img_e = document.getElementById("img_e")
     be.onclick = () => {
         f_e = document.getElementById("file")
         if(f_e.files.length){
@@ -35,6 +37,7 @@ window.onload = () => {
                         imageData.data[i + 2] = (imageData.data[i+2] % 2)*255
                     }
                     ctx.putImageData(imageData, 0, 0)
+                    img_e.src = canvas.toDataURL()
                 }
             }
         }
