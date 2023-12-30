@@ -1,4 +1,6 @@
-<input id="file" type="file" accept="image/png, image/jpeg">
+<input id="mode" type="checkbox">File/URL mode
+<br><input id="file" type="file" accept="image/png, image/jpeg">
+<br><input id="url_e" style="display: none;">
 <button id="btn-extract">Extract</button>
 <br>
 <canvas id="canvas"></canvas>
@@ -13,6 +15,7 @@
 
 function render(URL){
     img = new Image()
+    img.crossOrigin = "anonymous"
     img.src = URL
     img.onload = () => {
         canvas.width = img.width
@@ -35,15 +38,34 @@ window.onload = () => {
     ctx = canvas.getContext("2d")
     be = document.getElementById("btn-extract")
     img_e = document.getElementById("img_e")
+    f_e = document.getElementById("file")
+    url_e = document.getElementById("url_e")
+    mode = document.getElementById("mode")
+    is_url_mode = false
+    mode.onchange = () => {
+        is_url_mode = mode.checked
+        if(!is_url_mode){
+            url_e.style.display = "none"
+            f_e.style.display = "block"
+        }
+        else{
+            url_e.style.display = "block"
+            f_e.style.display = "none"
+        }
+    }
     be.onclick = () => {
-        f_e = document.getElementById("file")
-        if(f_e.files.length){
-            file = f_e.files[0]
-            reader = new FileReader()
-            reader.readAsDataURL(file)
-            reader.onload = () => {
-                render(reader.result)
+        if(!is_url_mode){
+            if(f_e.files.length){
+                file = f_e.files[0]
+                reader = new FileReader()
+                reader.readAsDataURL(file)
+                reader.onload = () => {
+                    render(reader.result)
+                }
             }
+        }
+        else{
+            render(url_e.value)
         }
     }
 }
