@@ -10,6 +10,26 @@
     }
 </style>
 <script>
+
+function render(URL){
+    img = new Image()
+    img.src = URL
+    img.onload = () => {
+        canvas.width = img.width
+        canvas.height = img.height
+        ctx.drawImage(img, 0, 0)
+        imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        for(i = 0; i < imageData.data.length; i += 4) {
+            imageData.data[i] = (imageData.data[i] % 2)*255
+            imageData.data[i + 1] = (imageData.data[i+1] % 2)*255
+            imageData.data[i + 2] = (imageData.data[i+2] % 2)*255
+        }
+        ctx.putImageData(imageData, 0, 0)
+        img_e.src = canvas.toDataURL()
+    }
+
+}
+
 window.onload = () => {
     canvas = document.getElementById("canvas")
     ctx = canvas.getContext("2d")
@@ -19,26 +39,10 @@ window.onload = () => {
         f_e = document.getElementById("file")
         if(f_e.files.length){
             file = f_e.files[0]
-            console.log(f_e.files[0])
             reader = new FileReader()
             reader.readAsDataURL(file)
             reader.onload = () => {
-                console.log(reader.result)
-                img = new Image()
-                img.src = reader.result
-                img.onload = () => {
-                    canvas.width = img.width
-                    canvas.height = img.height
-                    ctx.drawImage(img, 0, 0)
-                    imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    for(i = 0; i < imageData.data.length; i += 4) {
-                        imageData.data[i] = (imageData.data[i] % 2)*255
-                        imageData.data[i + 1] = (imageData.data[i+1] % 2)*255
-                        imageData.data[i + 2] = (imageData.data[i+2] % 2)*255
-                    }
-                    ctx.putImageData(imageData, 0, 0)
-                    img_e.src = canvas.toDataURL()
-                }
+                render(reader.result)
             }
         }
     }
