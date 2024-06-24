@@ -1,0 +1,144 @@
+<style>
+    .preview {
+        max-width: 90vw; 
+        max-height: 50vh;
+    }
+</style>
+
+<p>base_image
+    <input type="file" id="base_image_elem" accept="image/png, image/jpeg" onchange="read(this,'base','base_preview')" >
+    <br><img id="base_preview" class="preview">
+</p>
+<p>secret_image
+    <input type="file" id="secret_image_elem" accept="image/png, image/jpeg" onchange="read(this,'secret','secret_preview')" >
+    <br><img id="secret_preview" class="preview">
+</p>
+
+<button id="btn_inject_elem" onclick="inject()">inject</button>
+<select>
+    <option onclick="set_matrix_id(0)">Bayer</option>
+    <option onclick="set_matrix_id(1)">Halftone</option>
+    <option onclick="set_matrix_id(2)">random</option>
+</select>
+<br>
+
+<canvas id="GLOBAL_CANVAS" class="preview" ></canvas>
+<img id="GLOBAL_IMAGE" class="preview">
+
+<script>
+IMAGES = new Object()
+GLOBAL_CONTEXT = GLOBAL_CANVAS.getContext("2d")
+var MATRIX_ID = 0 // 0 - bayer, 1 - halftone
+
+function set_matrix_id(id){
+    MATRIX_ID = id
+}
+
+function image_from_url(url){
+    img = new Image()
+    img.crossOrigin = "anonymous"
+    img.src = url
+    return img
+}
+
+function read(e,slot,preview_id){
+    reader = new FileReader()
+    reader.readAsDataURL(e.files[0])
+    reader.onload = () => {
+        IMAGES[slot] = image_from_url(reader.result)
+        preview_e = document.getElementById(preview_id)
+        preview_e.src = reader.result
+    }
+}
+
+function apply_matrix(value, w, index){
+    x = index%w
+    y = Math.floor(index/w)
+    matricies = [
+        [ // bayer matrix
+            [  0,128, 32,160],
+            [192, 64,224, 96],
+            [ 48,176, 16,144],
+            [240,112,208, 80],
+        ],
+        [ // halftone
+            [127, 123, 115, 107, 108, 115, 123, 127, 128, 131, 140, 147, 148, 140, 132, 128], 
+            [123, 107, 81, 62, 63, 81, 107, 123, 131, 148, 174, 193, 193, 174, 148, 132], 
+            [115, 81, 39, 17, 17, 40, 81, 116, 138, 174, 215, 238, 238, 216, 174, 140], 
+            [107, 62, 17, 1, 1, 17, 63, 110, 145, 192, 238, 254, 254, 238, 193, 148], 
+            [107, 61, 16, 1, 1, 17, 62, 109, 145, 192, 237, 254, 254, 238, 193, 148], 
+            [114, 80, 38, 16, 17, 39, 81, 116, 138, 173, 215, 238, 238, 215, 174, 140], 
+            [123, 107, 80, 61, 61, 80, 107, 123, 131, 147, 173, 192, 192, 174, 148, 131], 
+            [127, 123, 115, 109, 109, 116, 123, 127, 128, 131, 138, 145, 145, 138, 131, 128], 
+            [128, 132, 139, 146, 146, 139, 131, 128, 127, 123, 116, 110, 110, 117, 123, 127], 
+            [132, 149, 176, 194, 194, 174, 148, 131, 123, 107, 82, 63, 63, 82, 108, 123], 
+            [141, 176, 217, 239, 238, 215, 173, 138, 116, 81, 40, 18, 18, 41, 82, 115], 
+            [148, 194, 239, 254, 254, 237, 191, 144, 109, 62, 17, 1, 1, 17, 63, 108], 
+            [148, 194, 238, 254, 253, 237, 191, 144, 109, 61, 16, 1, 1, 17, 62, 107], 
+            [140, 174, 216, 237, 237, 214, 172, 137, 115, 79, 38, 16, 16, 38, 80, 115], 
+            [132, 148, 173, 192, 191, 172, 146, 130, 123, 106, 79, 60, 60, 80, 107, 123], 
+            [128, 131, 139, 147, 146, 139, 131, 128, 127, 123, 114, 106, 106, 114, 123, 127]
+        ],
+        [ // random
+            [160, 238, 128, 200, 122, 56, 223, 177], 
+            [160, 128, 98, 246, 128, 190, 203, 187], 
+            [167, 152, 89, 170, 182, 185, 194, 122], 
+            [152, 64, 21, 55, 217, 64, 170, 115], 
+            [89, 191, 197, 175, 63, 213, 128, 108], 
+            [60, 220, 229, 251, 239, 196, 69, 101], 
+            [210, 100, 63, 135, 252, 86, 119, 194], 
+            [200, 151, 100, 75, 131, 249, 135, 188]
+        ]
+
+    ]
+    if(matricies[MATRIX_ID] [y%matricies[MATRIX_ID].length] [x%matricies[MATRIX_ID][0].length] < value){ // shitcode but ok
+        return 1
+    }
+    return 0
+}
+
+function dither(base,secret){
+    //base
+    canvas = document.createElement("canvas")
+    ctx = canvas.getContext("2d")
+    canvas.width = base.width
+    canvas.height = base.height
+    ctx.drawImage(base, 0, 0)
+    imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    //secret
+    ctx.drawImage(secret, 0, 0, base.width, base.height)
+    imageData_s = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    for(i = 0; i < imageData.data.length; i += 1) {
+        if(i%4 != 3){ //if not A channel
+            if(imageData.data[i] % 2){
+                imageData.data[i] = imageData.data[i] - 1
+            }
+            secret_pixel = apply_matrix(imageData_s.data[i], base.width, Math.floor(i/4))
+            imageData.data[i] = imageData.data[i] + secret_pixel
+            imageData_s.data[i] = secret_pixel * 255
+        }
+        else {
+            imageData.data[i] = imageData.data[i]
+        }
+    }
+    ctx.putImageData(imageData, 0, 0)
+    draw(canvas.toDataURL())
+    
+    GLOBAL_CONTEXT.putImageData(imageData_s, 0, 0)
+}
+
+function draw(url){
+    img = image_from_url(url)
+    img.onload = () => {
+        GLOBAL_CANVAS.width = img.width
+        GLOBAL_CANVAS.height = img.height
+        GLOBAL_IMAGE.src = url
+    }
+}
+
+function inject(){
+    dither(IMAGES.base,IMAGES.secret)
+}
+</script>
