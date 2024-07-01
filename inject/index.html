@@ -33,7 +33,7 @@
 <script>
 var IMAGES = new Object()
 var GLOBAL_CONTEXT = GLOBAL_CANVAS.getContext("2d")
-var MATRIX_ID = 0 // 0 - bayer, 1 - halftone
+var MATRIX_ID = 0
 var PASTE_SLOT = "base"
 var GLOABL_imageData_s;
 
@@ -77,10 +77,8 @@ function read_from_url(url,slot,preview_id){
     }
 }
 
-function apply_matrix(value, w, index){
-    x = index%w
-    y = Math.floor(index/w)
-    matricies = [
+
+matricies = [
         [ // bayer matrix
             [  0,128, 32,160],
             [192, 64,224, 96],
@@ -106,14 +104,22 @@ function apply_matrix(value, w, index){
             [128, 131, 139, 147, 146, 139, 131, 128, 127, 123, 114, 106, 106, 114, 123, 127]
         ],
         [ // random
-            [160, 238, 128, 200, 122, 56, 223, 177], 
-            [160, 128, 98, 246, 128, 190, 203, 187], 
-            [167, 152, 89, 170, 182, 185, 194, 122], 
-            [152, 64, 21, 55, 217, 64, 170, 115], 
-            [89, 191, 197, 175, 63, 213, 128, 108], 
-            [60, 220, 229, 251, 239, 196, 69, 101], 
-            [210, 100, 63, 135, 252, 86, 119, 194], 
-            [200, 151, 100, 75, 131, 249, 135, 188]
+            [104, 33, 35, 64, 168, 11, 78, 177, 91, 236, 243, 209, 88, 154, 40, 81],
+            [51, 89, 188, 136, 239, 108, 145, 182, 86, 214, 217, 233, 12, 71, 147, 201],
+            [197, 231, 219, 0, 99, 49, 203, 143, 16, 173, 67, 109, 207, 241, 19, 246],
+            [20, 176, 3, 72, 212, 115, 48, 166, 158, 5, 142, 238, 189, 248, 215, 102],
+            [18, 151, 131, 82, 196, 7, 56, 160, 26, 76, 159, 255, 70, 186, 155, 24],
+            [213, 170, 148, 204, 245, 162, 244, 44, 105, 172, 23, 100, 191, 31, 138, 242],
+            [106, 87, 169, 32, 46, 179, 107, 156, 52, 153, 164, 92, 6, 225, 27, 112],
+            [59, 129, 134, 126, 122, 37, 247, 57, 123, 4, 62, 234, 75, 101, 174, 61],
+            [184, 111, 63, 43, 21, 208, 30, 114, 140, 152, 194, 183, 192, 93, 120, 190],
+            [97, 128, 250, 94, 95, 103, 175, 139, 42, 15, 232, 206, 47, 237, 205, 216],
+            [252, 65, 180, 137, 90, 69, 34, 118, 84, 110, 130, 200, 127, 228, 13, 29],
+            [165, 28, 124, 132, 149, 1, 229, 220, 163, 38, 249, 181, 83, 55, 227, 144],
+            [85, 96, 187, 199, 77, 221, 195, 226, 202, 2, 157, 230, 121, 150, 223, 98],
+            [178, 45, 50, 10, 146, 53, 116, 17, 198, 240, 185, 125, 9, 210, 251, 171],
+            [73, 74, 41, 211, 22, 224, 39, 218, 68, 14, 253, 113, 117, 193, 222, 133],
+            [167, 161, 254, 135, 119, 141, 25, 58, 79, 80, 36, 235, 66, 8, 54, 60]
         ],
         [ // grid
             [0, 254, 1, 252, 4, 249, 6, 248, 247, 9, 245, 11, 242, 12, 240, 15], 
@@ -135,6 +141,10 @@ function apply_matrix(value, w, index){
         ]
 
     ]
+
+function apply_matrix(value, w, index){
+    x = index%w
+    y = Math.floor(index/w)
     if(matricies[MATRIX_ID] [y%matricies[MATRIX_ID].length] [x%matricies[MATRIX_ID][0].length] < value){ // shitcode but ok
         return 1
     }
@@ -154,17 +164,21 @@ function dither(base,secret){
     ctx.drawImage(secret, 0, 0, base.width, base.height)
     GLOABL_imageData_s = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
+    console.log(imageData.data.length)
+
     for(i = 0; i < imageData.data.length; i += 1) {
         if(i%4 != 3){ //if not A channel
-            if(imageData.data[i] % 2){
-                imageData.data[i] = imageData.data[i] - 1
-            }
-            secret_pixel = apply_matrix(GLOABL_imageData_s.data[i], base.width, Math.floor(i/4))
-            imageData.data[i] = imageData.data[i] + secret_pixel
+
+            //if(imageData.data[i] % 2){
+            //    imageData.data[i] = imageData.data[i] - 1
+            //}
+
+            secret_pixel = apply_matrix(GLOABL_imageData_s.data[i], base.width, i >> 2)
+            imageData.data[i] = (imageData.data[i] >> 1 << 1) + secret_pixel // bitshift magic
             GLOABL_imageData_s.data[i] = secret_pixel * 255
         }
         else {
-            imageData.data[i] = imageData.data[i]
+            GLOABL_imageData_s.data[i] = 255
         }
     }
     ctx.putImageData(imageData, 0, 0)
