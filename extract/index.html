@@ -6,7 +6,10 @@
 <canvas id="canvas"></canvas>
 <img id="img_e">
 <style>
-    #canvas,#img_e{
+    #canvas{
+        display: none;
+    }
+    #img_e{
         max-width: 90vw;
         max-height: 90vh;
     }
@@ -33,6 +36,21 @@ function render(URL){
 
 }
 
+document.onpaste = (evt) => {
+  const dT = evt.clipboardData || window.clipboardData;
+  const file = dT.files[0];
+  console.log(file)
+  readfile(file)
+};
+
+function readfile(file){
+    reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = () => {
+        render(reader.result)
+    }
+}
+
 window.onload = () => {
     canvas = document.getElementById("canvas")
     ctx = canvas.getContext("2d")
@@ -57,11 +75,7 @@ window.onload = () => {
         if(!is_url_mode){
             if(f_e.files.length){
                 file = f_e.files[0]
-                reader = new FileReader()
-                reader.readAsDataURL(file)
-                reader.onload = () => {
-                    render(reader.result)
-                }
+                readfile(file)
             }
         }
         else{
