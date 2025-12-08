@@ -1,204 +1,321 @@
+<head>
 <style>
+    #test_canvas {
+        border: 2px solid;
+    }
     .preview {
-        max-width: 90vw; 
-        max-height: 50vh;
+        max-height: 16em;
+    }
+    #image_selectors{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+    #image_selectors>*{
+        border: 1px solid;
+        margin: 0.25em;
+        padding: 1em;
+    }
+    #images_output>img{
+        min-width: 2em;
+        min-height: 2em;
+    }
+    #images_output{
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    #paste_modal{
+        padding: 1em;
+        background-color: white;
+        border: white;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%);
+        border: 1px solid;
+        text-align: center;
+        display: none;
+    }
+    #overlay{
+        position: absolute;
+        width: 100vw;
+        height: 100vh;
+        top: 0%;
+        left: 0%;
+        background-color: rgba(0, 0, 0, 0.3);
+        opacity: 0;
+        pointer-events: none;
+        transition-duration: 0.1s;
     }
 </style>
+</head>
+<body>
+<div id="overlay">
 
-<p>base_image
-    <input type="file" accept="image/png, image/jpeg" onchange="read(this,'base','base_preview')">
-    <input type="url" onchange="read_from_url(this,'base','base_preview')">
-    <button onclick="change_paste_slot('base')">Paste image</button>
-    <br><img id="base_preview" class="preview">
-</p>
-<p>secret_image
-    <input type="file" accept="image/png, image/jpeg" onchange="read(this,'secret','secret_preview')">
-    <input type="url" onchange="read_from_url(this,'secret','secret_preview')" data-slot="">
-    <button onclick="change_paste_slot('secret')">Paste image</button>
-    <br><img id="secret_preview" class="preview">
-</p>
-
-<button id="btn_inject_elem" onclick="inject()">inject</button>
-<select>
-    <option onclick="set_matrix_id(0)">Bayer</option>
-    <option onclick="set_matrix_id(1)">Halftone</option>
-    <option onclick="set_matrix_id(2)">Pseudo-shitty-random</option>
-    <option onclick="set_matrix_id(3)">Grid</option>
-</select>
-<br>
-
-<canvas id="GLOBAL_CANVAS" class="preview" ></canvas>
-<img id="GLOBAL_IMAGE" class="preview">
-
+</div>
+<div id="paste_modal">
+    <h3 style="margin: 0.5em;">Choose paste location</h3>
+    <button onclick="paste_modal.paste(0)">Base</button>
+    <button onclick="paste_modal.paste(1)">Secret</button>
+    <br>
+    <button onclick="paste_modal.hide()">Cancel</button>
+</div>
 <script>
-var IMAGES = new Object()
-var GLOBAL_CONTEXT = GLOBAL_CANVAS.getContext("2d")
-var MATRIX_ID = 0
-var PASTE_SLOT = "base"
-var GLOABL_imageData_s;
+    base_image = new Image()
+    secret_image = new Image()
 
-function set_matrix_id(id){
-    MATRIX_ID = id
-}
-
-function image_from_url(url){
-    img = new Image()
-    img.crossOrigin = "anonymous"
-    img.src = url
-    return img
-}
-
-function change_paste_slot(slot){
-    PASTE_SLOT = slot
-}
-
-document.onpaste = (evt) => {
-  const dT = evt.clipboardData || window.clipboardData;
-  const file = dT.files[0];
-  console.log(file)
-  read(dT,PASTE_SLOT,PASTE_SLOT+"_preview")
-};
-
-function read(e,slot,preview_id){
-    reader = new FileReader()
-    reader.readAsDataURL(e.files[0])
-    reader.onload = () => {
-        IMAGES[slot] = image_from_url(reader.result)
-        preview_e = document.getElementById(preview_id)
-        preview_e.src = reader.result
+    base_image.onload = () => {
+        base_preview.src = base_image.src
     }
-}
 
-function read_from_url(url,slot,preview_id){
-    img = image_from_url(url)
-    img.onload = () => {
-        IMAGES[slot] = img
-        document.getElementById(preview_id).src = url
+    secret_image.onload = () => {
+        secret_preview.src = secret_image.src
     }
-}
 
+    settings = {
+        bayer: {
+            scale: 4
+        },
+        halftone: {
+            scale: 1/4,
+            channel_shift_x: 0,
+            channel_shift_y: 0
+        }
+    }
+    Method = {
+        Bayer: 0,
+        Halftone: 1,
+        Blue: 2,
+        IGN: 4,
+        White: 5
+    }
+    current_method = Method.Bayer
+    function set_method(method){
+        current_method = method
+    }
 
-matricies = [
-        [ // bayer matrix
-            [  0,128, 32,160],
-            [192, 64,224, 96],
-            [ 48,176, 16,144],
-            [240,112,208, 80],
-        ],
-        [ // halftone
-            [127, 123, 115, 107, 108, 115, 123, 127, 128, 131, 140, 147, 148, 140, 132, 128], 
-            [123, 107, 81, 62, 63, 81, 107, 123, 131, 148, 174, 193, 193, 174, 148, 132], 
-            [115, 81, 39, 17, 17, 40, 81, 116, 138, 174, 215, 238, 238, 216, 174, 140], 
-            [107, 62, 17, 1, 1, 17, 63, 110, 145, 192, 238, 254, 254, 238, 193, 148], 
-            [107, 61, 16, 1, 1, 17, 62, 109, 145, 192, 237, 254, 254, 238, 193, 148], 
-            [114, 80, 38, 16, 17, 39, 81, 116, 138, 173, 215, 238, 238, 215, 174, 140], 
-            [123, 107, 80, 61, 61, 80, 107, 123, 131, 147, 173, 192, 192, 174, 148, 131], 
-            [127, 123, 115, 109, 109, 116, 123, 127, 128, 131, 138, 145, 145, 138, 131, 128], 
-            [128, 132, 139, 146, 146, 139, 131, 128, 127, 123, 116, 110, 110, 117, 123, 127], 
-            [132, 149, 176, 194, 194, 174, 148, 131, 123, 107, 82, 63, 63, 82, 108, 123], 
-            [141, 176, 217, 239, 238, 215, 173, 138, 116, 81, 40, 18, 18, 41, 82, 115], 
-            [148, 194, 239, 254, 254, 237, 191, 144, 109, 62, 17, 1, 1, 17, 63, 108], 
-            [148, 194, 238, 254, 253, 237, 191, 144, 109, 61, 16, 1, 1, 17, 62, 107], 
-            [140, 174, 216, 237, 237, 214, 172, 137, 115, 79, 38, 16, 16, 38, 80, 115], 
-            [132, 148, 173, 192, 191, 172, 146, 130, 123, 106, 79, 60, 60, 80, 107, 123], 
-            [128, 131, 139, 147, 146, 139, 131, 128, 127, 123, 114, 106, 106, 114, 123, 127]
-        ],
-        [ // random
-            [104, 33, 35, 64, 168, 11, 78, 177, 91, 236, 243, 209, 88, 154, 40, 81],
-            [51, 89, 188, 136, 239, 108, 145, 182, 86, 214, 217, 233, 12, 71, 147, 201],
-            [197, 231, 219, 0, 99, 49, 203, 143, 16, 173, 67, 109, 207, 241, 19, 246],
-            [20, 176, 3, 72, 212, 115, 48, 166, 158, 5, 142, 238, 189, 248, 215, 102],
-            [18, 151, 131, 82, 196, 7, 56, 160, 26, 76, 159, 255, 70, 186, 155, 24],
-            [213, 170, 148, 204, 245, 162, 244, 44, 105, 172, 23, 100, 191, 31, 138, 242],
-            [106, 87, 169, 32, 46, 179, 107, 156, 52, 153, 164, 92, 6, 225, 27, 112],
-            [59, 129, 134, 126, 122, 37, 247, 57, 123, 4, 62, 234, 75, 101, 174, 61],
-            [184, 111, 63, 43, 21, 208, 30, 114, 140, 152, 194, 183, 192, 93, 120, 190],
-            [97, 128, 250, 94, 95, 103, 175, 139, 42, 15, 232, 206, 47, 237, 205, 216],
-            [252, 65, 180, 137, 90, 69, 34, 118, 84, 110, 130, 200, 127, 228, 13, 29],
-            [165, 28, 124, 132, 149, 1, 229, 220, 163, 38, 249, 181, 83, 55, 227, 144],
-            [85, 96, 187, 199, 77, 221, 195, 226, 202, 2, 157, 230, 121, 150, 223, 98],
-            [178, 45, 50, 10, 146, 53, 116, 17, 198, 240, 185, 125, 9, 210, 251, 171],
-            [73, 74, 41, 211, 22, 224, 39, 218, 68, 14, 253, 113, 117, 193, 222, 133],
-            [167, 161, 254, 135, 119, 141, 25, 58, 79, 80, 36, 235, 66, 8, 54, 60]
-        ],
-        [ // grid
-            [0, 254, 1, 252, 4, 249, 6, 248, 247, 9, 245, 11, 242, 12, 240, 15], 
-            [238, 17, 237, 18, 234, 20, 232, 23, 23, 230, 26, 227, 27, 225, 30, 223], 
-            [31, 222, 34, 220, 36, 218, 38, 215, 215, 40, 212, 42, 211, 45, 209, 47], 
-            [207, 48, 205, 50, 203, 53, 201, 54, 56, 197, 58, 196, 59, 193, 62, 191], 
-            [64, 190, 66, 187, 67, 185, 70, 184, 182, 73, 181, 75, 178, 76, 176, 78], 
-            [174, 81, 172, 83, 171, 84, 169, 86, 87, 166, 89, 164, 92, 162, 94, 160], 
-            [96, 157, 97, 155, 100, 154, 101, 152, 151, 105, 149, 106, 147, 109, 144, 111], 
-            [143, 113, 141, 115, 139, 117, 136, 118, 120, 134, 121, 132, 124, 130, 126, 127], 
-            [126, 128, 124, 131, 123, 133, 120, 134, 135, 118, 137, 116, 140, 114, 142, 112], 
-            [144, 110, 145, 107, 148, 106, 149, 104, 103, 153, 101, 155, 99, 156, 97, 159], 
-            [95, 161, 92, 162, 91, 165, 89, 166, 168, 85, 170, 83, 171, 81, 174, 80], 
-            [175, 78, 177, 76, 180, 73, 181, 72, 70, 184, 68, 187, 67, 188, 64, 191], 
-            [62, 193, 60, 195, 58, 197, 57, 198, 199, 54, 202, 52, 203, 49, 206, 47], 
-            [207, 46, 210, 44, 212, 41, 213, 40, 39, 217, 37, 219, 35, 221, 33, 222], 
-            [31, 224, 29, 226, 27, 229, 24, 231, 231, 22, 234, 19, 235, 18, 237, 15], 
-            [240, 14, 242, 12, 243, 9, 245, 8, 7, 248, 5, 251, 2, 252, 1, 254]
-        ]
+    paste_file = undefined
 
+    CHEAP_TILED_32_BLUE_NOISE = [[24, 161, 98, 130, 227, 128, 14, 237, 80, 199, 102, 67, 156, 54, 108, 193, 54, 180, 85, 170, 21, 152, 232, 100, 25, 153, 230, 92, 28, 190, 57, 239], [170, 66, 253, 51, 88, 174, 207, 23, 178, 45, 137, 218, 27
+, 246, 144, 83, 171, 70, 205, 39, 249, 126, 53, 135, 245, 120, 33, 145, 251, 74, 154, 98], [217, 114, 29, 201, 167, 34, 121, 159, 60, 255, 22, 172, 96, 134, 38, 224, 2, 240, 18, 189, 61, 112, 196, 79, 148, 89, 216, 111, 43, 137, 221, 29], [1, 194, 166, 73, 93, 245, 61, 222, 125, 101, 165, 63, 235, 70, 197, 79, 182, 58, 169, 94, 142, 218, 5, 229, 13, 186, 0, 166, 204, 64, 130, 177], [244, 90, 47, 233, 141, 4, 181, 26, 195, 18, 209, 139, 25, 205, 48, 146, 107, 215, 27, 235, 15, 164, 93, 131, 203, 71, 243, 127, 16, 237, 114, 48], [7, 152, 212, 21, 124, 219, 100, 150, 76, 230, 68, 105, 183, 84, 135, 251, 11, 174, 102, 125, 175, 66, 253, 106, 32, 181, 44, 108, 185, 56, 159, 213], [190, 50, 123, 188, 36, 160, 31, 240, 136, 49, 126, 247, 6, 223, 81, 115, 167, 63, 242, 24, 211, 115, 35, 158, 225, 80, 156, 228, 17, 200, 72, 122], [133, 238, 69, 132, 250, 77, 169, 118, 87, 214, 157, 2, 176, 56, 191, 17, 212, 138, 46, 187, 9, 220, 172, 75, 103, 198, 62, 121, 162, 42, 255, 38], [109, 44, 203, 112, 19, 122, 221, 55, 184, 10, 119, 220, 106, 147, 94, 236, 31, 101, 207, 88, 150, 123, 47, 238, 132, 34, 247, 40, 209, 118, 84, 193], [211, 158, 15, 164, 215, 151, 8, 196, 71, 252, 78, 162, 62, 243, 46, 113, 155, 231, 8, 134, 248, 78, 194, 7, 183, 128, 105, 168, 23, 222, 139, 14], [37, 120, 248, 52, 117, 59, 241, 40, 175, 0, 179, 33, 189, 12, 206, 171, 52, 97, 188, 110, 30, 179, 22, 202, 45, 227, 60, 201, 95, 157, 82, 236], [192, 82, 145, 104, 229, 131, 110, 148, 111, 216, 89, 226, 95, 153, 92, 13, 254, 146, 12, 224, 160, 81, 233, 69, 144, 99, 165, 4, 244, 20, 176, 51], [86, 210, 20, 182, 9, 202, 43, 232, 39, 168, 28, 149, 41, 234, 129, 198, 116, 83, 199, 96, 26, 197, 91, 119, 252, 6, 217, 141, 87, 143, 208, 117], [142, 32, 239, 85, 187, 11, 177, 103, 155, 91, 249, 97, 173, 116, 74, 163, 65, 234, 41, 149, 246, 50, 133, 184, 10, 178, 129, 49, 195, 104, 1, 250], [107, 186, 64, 138, 53, 254, 127, 75, 231, 72, 140, 65, 204, 57, 242, 30, 210, 19, 191, 77, 136, 109, 226, 36, 206, 55, 113, 241, 3, 219, 161, 67], [208, 5, 154, 225, 99, 143, 58, 213, 3, 200, 42, 228, 35, 185, 16, 180, 90, 151, 86, 214, 59, 192, 76, 147, 73, 223, 163, 68, 124, 140, 37, 173], [48, 242, 117, 24, 186, 13, 197, 105, 145, 110, 166, 98, 139, 86, 205, 80, 132, 249, 133, 21, 233, 44, 116, 242, 99, 140, 14, 175, 213, 56, 235, 110], [100, 153, 87, 210, 56, 237, 131, 47, 245, 21, 209, 3, 253, 146, 23, 232, 62, 145, 73, 187, 79, 160, 205, 2, 171, 70, 247, 97, 19, 186, 27, 193], [223, 52, 192, 1, 180, 68, 106, 187, 70, 168, 53, 185, 112, 63, 194, 46, 190, 12, 230, 32, 194, 15, 141, 104, 219, 121, 16, 126, 228, 83, 147, 48], [170, 118, 74, 250, 88, 132, 229, 38, 211, 11, 231, 133, 91, 227, 75, 152, 101, 210, 87, 155, 51, 255, 60, 191, 6, 150, 217, 163, 50, 112, 253, 96], [6, 235, 154, 62, 113, 198, 16, 135, 108, 163, 119, 50, 189, 29, 138, 248, 17, 161, 46, 206, 130, 102, 162, 43, 237, 49, 134, 22, 198, 180, 34, 138], [175, 93, 45, 173, 219, 60, 148, 252, 44, 208, 76, 243, 67, 202, 85, 111, 173, 75, 241, 9, 188, 31, 209, 129, 103, 182, 77, 244, 39, 127, 88, 222], [40, 161, 226, 114, 34, 184, 103, 28, 182, 15, 169, 2, 181, 41, 228, 20, 214, 123, 37, 172, 72, 236, 10, 189, 8, 201, 144, 66, 117, 232, 170, 80], [246, 90, 127, 71, 240, 4, 217, 164, 83, 230, 78, 213, 107, 137, 79, 183, 61, 139, 218, 57, 192, 0, 184, 67, 248, 90, 41, 204, 181, 26, 106, 151], [128, 57, 203, 178, 54, 156, 122, 66, 191, 58, 116, 160, 37, 255, 149, 32, 234, 40, 157, 125, 105, 220, 108, 142, 55, 136, 224, 113, 82, 137, 221, 47], [167, 224, 31, 102, 134, 214, 26, 244, 5, 155, 238, 14, 199, 55, 99, 195, 68, 199, 20, 250, 38, 159, 25, 207, 178, 35, 158, 29, 251, 24, 176, 95], [12, 96, 136, 254, 27, 172, 126, 69, 204, 124, 77, 177, 73, 129, 222, 42, 118, 168, 128, 58, 169, 81, 240, 18, 86, 238, 76, 174, 89, 148, 59, 239], [174, 216, 30, 150, 123, 61, 236, 97, 165, 33, 200, 51, 234, 159, 81, 151, 245, 3, 215, 119, 225, 115, 63, 195, 167, 13, 122, 212, 54, 229, 114, 78], [43, 94, 196, 59, 206, 179, 10, 176, 89, 251, 7, 142, 121, 64, 193, 49, 135, 91, 164, 85, 28, 202, 166, 23, 107, 216, 152, 4, 185, 7, 208, 165], [249, 147, 17, 233, 18, 101, 143, 207, 19, 109, 171, 215, 22, 241, 9, 218, 109, 211, 1, 243, 146, 100, 45, 254, 143, 42, 94, 246, 74, 153, 124, 65], [36, 104, 188, 82, 144, 247, 39, 115, 225, 158, 65, 92, 162, 72, 130, 157, 69, 131, 154, 120, 30, 227, 149, 93, 64, 226, 156, 33, 111, 231, 53, 196], [141, 221, 25, 201, 35, 95, 190, 84, 140, 8, 239, 125, 220, 120, 212, 0, 252, 5, 223, 71, 197, 92, 36, 183, 200, 52, 98, 179, 203, 11, 177, 84]] 
+    
+    BAYER_MATRICIES = []
+    BAYER_MATRICIES[4] = [ // bayer matrix 4x4
+        [  0,128, 32,160],
+        [192, 64,224, 96],
+        [ 48,176, 16,144],
+        [240,112,208, 80],
     ]
 
-function apply_matrix(value, w, index){
-    x = index%w
-    y = Math.floor(index/w)
-    if(matricies[MATRIX_ID] [y%matricies[MATRIX_ID].length] [x%matricies[MATRIX_ID][0].length] < value){ // shitcode but ok
-        return 1
+    window.onload = () => {
+        paste_modal.setElement(document.getElementById("paste_modal"))
     }
-    return 0
-}
 
-function dither(base,secret){
-    //base
-    canvas = document.createElement("canvas")
-    ctx = canvas.getContext("2d")
-    canvas.width = base.width
-    canvas.height = base.height
-    ctx.drawImage(base, 0, 0)
-    imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    document.onpaste = (evt) => {
+        const dT = evt.clipboardData || window.clipboardData;
+        const file = dT.files[0];
+        paste_file = file;
+        paste_modal.show()
+    };
 
-    //secret
-    ctx.drawImage(secret, 0, 0, base.width, base.height)
-    GLOABL_imageData_s = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-    console.log(imageData.data.length)
-
-    for(i = 0; i < imageData.data.length; i += 1) {
-        if(i%4 != 3){ //if not A channel
-
-            //if(imageData.data[i] % 2){
-            //    imageData.data[i] = imageData.data[i] - 1
-            //}
-
-            secret_pixel = apply_matrix(GLOABL_imageData_s.data[i], base.width, i >> 2)
-            imageData.data[i] = (imageData.data[i] >> 1 << 1) + secret_pixel // bitshift magic
-            GLOABL_imageData_s.data[i] = secret_pixel * 255
+    class Modal {
+        constructor(){
+            this.e = undefined
         }
-        else {
-            GLOABL_imageData_s.data[i] = 255
+        setElement(e){
+            this.e = e
+        }
+        show(){
+            this.e.style.display = "inline-block"
+            overlay.style.opacity = 1
+        }
+        hide(){
+            this.e.style.display = "none"
+            overlay.style.opacity = 0
         }
     }
-    ctx.putImageData(imageData, 0, 0)
-    draw(canvas.toDataURL())
+
+    paste_modal = new Modal()
+    paste_modal.paste = (isSecret)=>{
+        if(paste_file){
+            if(isSecret){
+                secret_image.src = URL.createObjectURL(paste_file)
+            }
+            else{
+                base_image.src = URL.createObjectURL(paste_file)
+            }
+        }
+        paste_modal.hide()
+    }
+
+    async function image_to_imagedata(img, w = undefined, h = undefined){
+        canvas = await document.createElement("canvas")
+        ctx = await canvas.getContext("2d")
+        if(w == undefined){
+            canvas.width = img.width
+            canvas.height = img.height
+            await ctx.drawImage(img, 0, 0, img.width, img.height)
+        }
+        else{
+            canvas.width = w
+            canvas.height = h
+            await ctx.drawImage(img, 0, 0, w, h)
+        }
+
+        imagedata = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        return imagedata
+    }
+
+    function a_gt_b(a,b){
+        if (a >= b) {
+            return 1;
+        }
+        return 0;
+    }
     
-}
-
-function draw(url){
-    img = image_from_url(url)
-    img.onload = () => {
-        GLOBAL_CANVAS.width = img.width
-        GLOBAL_CANVAS.height = img.height
-        GLOBAL_CONTEXT.putImageData(GLOABL_imageData_s, 0, 0)
-        GLOBAL_IMAGE.src = url
+    function dither(x,y,i){
+        switch (current_method) {
+            case Method.Bayer:
+                return bayer_dither(x,y)
+            case Method.Halftone:
+                return halftone_dither(x,y,i)
+            case Method.IGN:
+                return IGN_dither(x,y)
+            case Method.Blue:
+                return blue_dither(x,y,i)
+            case Method.White:
+                return Math.random()
+            default:
+                break;
+        }
     }
-}
 
-function inject(){
-    dither(IMAGES.base,IMAGES.secret)
-}
+    async function inject(){
+        base_imagedata = await image_to_imagedata(base_image)
 
+        w = base_imagedata.width
+        h = base_imagedata.height
 
+        secret_imagedata = await image_to_imagedata(secret_image, w, h)
+
+        imagedata = new ImageData(w,h)
+        imagedata_for_preview = new ImageData(w,h)
+
+        for(x = 0; x < w; x++){
+            for(y = 0; y < h; y++){
+                // calculating offsets
+                r = (y * w + x) * 4 + 0
+                g = (y * w + x) * 4 + 1
+                b = (y * w + x) * 4 + 2
+                a = (y * w + x) * 4 + 3
+
+                channels = [r,g,b]
+
+                for(i = 0; i < 3; i++){
+                    //     applying dither                                  dither function      
+                    agtb = a_gt_b(secret_imagedata.data[channels[i]] / 255, dither(x,y,i));
+                    //        choosing channel    setting last bit to 0                          adding secret image
+                    imagedata.data[channels[i]] = (base_imagedata.data[channels[i]] >> 1 << 1) + agtb;
+                    imagedata_for_preview.data[channels[i]] = agtb * 255;
+                }
+                imagedata.data[a] = 255;
+                imagedata_for_preview.data[a] = 255;
+            }
+        }
+        canvas = document.createElement("canvas")
+        canvas.width = w
+        canvas.height = h
+        ctx = await canvas.getContext("2d")
+        ctx.putImageData(imagedata, 0, 0)
+        final_image.src = canvas.toDataURL()
+        ctx.putImageData(imagedata_for_preview, 0, 0)
+        dither_image.src = canvas.toDataURL()
+    }
+
+    async function read(e,slot,preview_id){
+        reader = new FileReader()
+        reader.readAsDataURL(e.files[0])
+        reader.onload = () => {
+            if(slot == "base"){
+                base_image = image_from_url(reader.result)
+            }
+            else{
+                secret_image = image_from_url(reader.result)
+            }
+            preview_e = document.getElementById(preview_id)
+            preview_e.src = reader.result
+        }
+    }
+
+    function image_from_url(url){
+        img = new Image()
+        img.crossOrigin = "anonymous"
+        img.src = url
+        return img
+    }
+
+    function bayer_dither(x,y) {
+        s = settings.bayer.scale
+        value = BAYER_MATRICIES[s][y%s][x%s]
+        return value / 255
+    }
+    function halftone_dither(x,y,i) {
+        res = 1/settings.halftone.scale
+        return (.5 + .5 * Math.sin(Math.PI * x * res + (settings.halftone.channel_shift_x * i))) * (.5 + .5 * Math.sin(Math.PI * y * res + (settings.halftone.channel_shift_y * i)))
+    }
+    function blue_dither(x,y,i) {
+        value = CHEAP_TILED_32_BLUE_NOISE[y%32][x%32]
+        return value / 255
+    }
+    function fmod(a,b){
+        return a % b
+    }
+    function IGN_dither(x,y) {
+        /*Source: https://blog.demofox.org/2022/01/01/interleaved-gradient-noise-a-different-kind-of-low-discrepancy-sequence/
+        float IGN(int pixelX, int pixelY)
+        {
+            return std::fmodf(52.9829189f * std::fmodf(0.06711056f*float(pixelX) + 0.00583715f*float(pixelY), 1.0f), 1.0f);
+        }
+        */
+        return fmod(52.9829189 * fmod(0.06711056*(x) + 0.00583715*(y), 1.0), 1.0);
+    }
 </script>
+<main>
+<div id="image_selectors">
+    <div>base_image
+        <input type="file" accept="image/png, image/jpeg" onchange="read(this,'base','base_preview')">
+        <br><img id="base_preview" class="preview">
+    </div>
+    <div>secret_image
+        <input type="file" accept="image/png, image/jpeg" onchange="read(this,'secret','secret_preview')">
+        <br><img id="secret_preview" class="preview">
+    </div>
+</div>
+<fieldset>
+    <legend>Settings</legend>
+    <label for="">Dithdering method: </label><select>
+        <option onclick="set_method(Method.Bayer)">Bayer</option>
+        <option onclick="set_method(Method.Halftone)">Halftone</option>
+        <option onclick="set_method(Method.Blue)">Blue Noise</option>
+        <option onclick="set_method(Method.IGN)">IGN</option>
+        <option onclick="set_method(Method.White)">White Noise</option>
+    </select> <br>
+    <label for="ht-scl">Halftone - Scale</label>
+    <input type="range" name="ht-scl" id="ht-scl" min="2" max="64" step="2" onchange="settings.halftone.scale = Number(this.value);" oninput="inject()">
+    <br>    
+    <label for="ht-shft">Halftone - Shift X</label>
+    <input type="range" name="ht-shft" id="ht-shft" min="0" max="6.28" step="0.01" onchange="settings.halftone.channel_shift_x = Number(this.value)" oninput="inject()">
+    <br> 
+    <label for="ht-shft">Halftone - Shift Y</label>
+    <input type="range" name="ht-shft" id="ht-shft" min="0" max="6.28" step="0.01" onchange="settings.halftone.channel_shift_y = Number(this.value)" oninput="inject()">
+    <br>
+    <button id="btn_inject_elem" onclick="inject()">inject</button>
+</fieldset>
+<div id="images_output">
+    <img src="" alt="" id="dither_image" style="border: 1px solid;" class="preview">
+    =>
+    <img src="" alt="" id="final_image" style="border: 1px solid;" class="preview">
+</div>
+</main>
+</body>
